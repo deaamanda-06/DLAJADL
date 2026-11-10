@@ -1,4 +1,4 @@
-# Catatan model <NIM>
+# Catatan model (123450043)
 
 ## Alasan optimizer
 
