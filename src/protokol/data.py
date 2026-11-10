@@ -23,16 +23,23 @@ from src.common import manifest, split
 TUGAS = "klasifikasi"
 
 
+import numpy as np
+
+
 def muat():
-    """Ganti isi fungsi ini dengan pemuat dataset kasus tim Anda."""
-    m = manifest.baca()
-    raise NotImplementedError(
-        f"Isi src/protokol/data.py untuk dataset {m.get('sumber', '?')} (lihat contoh_fashion_mnist.py)."
-    )
-    # --- pola yang lazim ---------------------------------------------------------------
-    # import pandas as pd
-    # df = pd.read_csv(manifest.AKAR / "data" / "latih.csv")
-    # X = df.drop(columns=["target"]).to_numpy(np.float32); y = df["target"].to_numpy()
-    # tr, va = split.indeks(len(X))               # atau split.indeks_urut(len(X)) untuk deret waktu
-    # uji = pd.read_csv(manifest.AKAR / "data" / "uji.csv")   # bila ada
-    # return X[tr], y[tr], X[va], y[va], X_uji, y_uji
+    """Memuat data simulasi citra dan label (tinggi_air_mm) untuk pengujian kerangka model."""
+    np.random.seed(42)
+
+    # Simulasi 40 sampel latih, 10 sampel validasi, dan 10 sampel uji
+    # Citra simulasi: shape (N, 224, 224, 3)
+    Xtr = np.random.rand(40, 224, 224, 3).astype(np.float32)
+    ytr = np.random.uniform(10.0, 200.0, size=(40,)).astype(np.float32)
+
+    Xva = np.random.rand(10, 224, 224, 3).astype(np.float32)
+    yva = np.random.uniform(10.0, 200.0, size=(10,)).astype(np.float32)
+
+    Xte = np.random.rand(10, 224, 224, 3).astype(np.float32)
+    yte = np.random.uniform(10.0, 200.0, size=(10,)).astype(np.float32)
+
+    return Xtr, ytr, Xva, yva, Xte, yte
+    
