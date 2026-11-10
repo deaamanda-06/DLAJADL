@@ -17,7 +17,7 @@ sys.path.insert(0, str(AKAR))
 from src.protokol import data  # noqa: E402  (protokol tim yang dibekukan)
 
 NIM = Path(__file__).resolve().parent.name     # nama folder = NIM
-JALUR = "cnn"                                   # cnn | tl | rnn | trf | ae
+JALUR = "tl"                                  # cnn | tl | rnn | trf | ae
 
 
 def latih_dan_prediksi(seed: int, final: bool) -> tuple[np.ndarray, np.ndarray | None]:

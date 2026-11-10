@@ -1,0 +1,11 @@
+{
+  "metrik": {
+    "acc": 0.7,
+    "macro_f1": 0.69697
+  },
+  "seed": 1,
+  "perangkat": "cpu laptop",
+  "model": "baseline",
+  "durasi_detik": 0.2624,
+  "n_val": 20
+}
