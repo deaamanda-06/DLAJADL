@@ -16,7 +16,8 @@ import numpy as np
 from src.protokol import data
 from src.common import evaluate
 
-NIM = "123450038"
+NIM = Path(__file__).resolve().parent.name     # nama folder = NIM
+JALUR = "tl"                                  # cnn | tl | rnn | trf | ae
 
 def muat_data_simulasi(seed: int):
     """Mencoba memuat data via src.protokol.data.muat(), 
