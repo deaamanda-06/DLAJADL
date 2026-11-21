@@ -10,5 +10,5 @@
   "model": "baseline",
   "n_val": 45,
   "n_test": 0,
-  "durasi_detik": 1.2
+  "durasi_detik": 1.0
 }
