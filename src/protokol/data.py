@@ -1,19 +1,26 @@
+"""Pemuat data resmi Tim 02 (Ruang Cerdas 5 Volt).
+
+Kasus: Taksiran tinggi air di wadah B dari citra (regresi mm).
+"""
+from __future__ import annotations
+
 import numpy as np
 
+from src.protokol import pemotong
+
+TUGAS = "regresi"
+
+
 def muat():
-    """Memuat data simulasi dummy dengan tipe data PyTorch-friendly."""
-    np.random.seed(42)
-    
-    # Data Latih (Train)
-    X_tr = np.random.randn(100, 3, 224, 224).astype(np.float32)
-    y_tr = np.random.randint(0, 2, size=(100,)).astype(np.int64)
-    
-    # Data Validasi (Validation)
-    X_va = np.random.randn(25, 3, 224, 224).astype(np.float32)
-    y_va = np.random.randint(0, 2, size=(25,)).astype(np.int64)
-    
-    # Data Uji (Test)
-    X_te = np.random.randn(25, 3, 224, 224).astype(np.float32)
-    y_te = np.random.randint(0, 2, size=(25,)).astype(np.int64)
-    
-    return X_tr, y_tr, X_va, y_va, X_te, y_te
+    """Memuat (X_train, y_train, X_val, y_val, X_test, y_test) hasil pemotongan ROI 224x224."""
+    if not pemotong.DATASET_PATH.exists():
+        pemotong.potong()
+    d = np.load(pemotong.DATASET_PATH)
+    return (
+        d["X_train"],
+        d["y_train"],
+        d["X_val"],
+        d["y_val"],
+        d["X_test"],
+        d["y_test"],
+    )
