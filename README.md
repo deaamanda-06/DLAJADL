@@ -110,3 +110,20 @@ optimizer dengan alasan tertulis, ≥ 1 regularisasi, tuning hyperparameter deng
 pencarian, ≥ 2 ablation, 3 seed pada konfigurasi akhir.
 
 Lisensi: MIT. Repo ini masuk Galeri Capstone sebagai portofolio setelah semester berakhir.
+
+## Cara Reproduksi Alur Sprint 1
+
+Pastikan seluruh dependensi terpasang di environment Python Anda:
+
+```bash
+pip install -r requirements.txt
+
+```
+
+Untuk menjalankan keseluruhan alur (muat data -> baseline -> evaluasi setiap jalur model -> pembuatan tabel komparasi), jalankan perintah berikut dari direktori utama repositori:
+
+```bash
+python run_all.py
+```
+
+Setelah proses selesai, hasil metrik masing-masing jalur akan tersimpan di folder `results/<nim>/metrics.json` dan tabel komparasi akhir dapat dilihat pada `reports/hasil_komparasi.md`.
