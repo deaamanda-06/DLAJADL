@@ -1,5 +1,9 @@
-"""Kerangka run.py anggota untuk jalur CNN (Modul 05)."""
+"""Jalur Model CNN dari Nol ? Dea Amanda (123450006).
 
+Menaksir tinggi air wadah B (mm) dari citra kamera meja 224x224.
+Jalankan:
+    python models/123450006/run.py --seed 1 [--final]
+"""
 from __future__ import annotations
 
 import argparse
@@ -11,107 +15,109 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 
 AKAR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(AKAR))
-from src.protokol import data  # noqa: E402  (protokol tim yang dibekukan)
+from src.protokol import data  # noqa: E402
 
-NIM = Path(__file__).resolve().parent.name  # nama folder = NIM
-JALUR = "cnn"  # cnn | tl | rnn | trf | ae
+NIM = Path(__file__).resolve().parent.name
+JALUR = "cnn"
 
 
-# ---- 1. ARSITEKTUR CNN REGRESI TINGGI AIR (MM) ----
-class CNNWaterRegressor(nn.Module):
-    def __init__(self, in_channels: int = 3):
+class TinggiAirCNN(nn.Module):
+    """Arsitektur CNN ringan untuk regresi tinggi permukaan air."""
+
+    def __init__(self) -> None:
         super().__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(in_channels, 16, kernel_size=3, padding=1),
+        self.fitur = nn.Sequential(
+            nn.Conv2d(3, 16, kernel_size=3, padding=1),
             nn.BatchNorm2d(16),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
             nn.Conv2d(16, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d((7, 7)),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool2d((14, 1)),
         )
-        self.regressor = nn.Sequential(
+        self.kepala = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(32 * 7 * 7, 64),
-            nn.ReLU(),
+            nn.Linear(128 * 14, 64),
+            nn.ReLU(inplace=True),
             nn.Dropout(0.2),
-            nn.Linear(64, 1),  # Output 1 nilai regresi (tinggi_air_mm)
+            nn.Linear(64, 1),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.features(x)
-        x = self.regressor(x)
-        return x
+        return self.kepala(self.fitur(x)).squeeze(-1)
 
 
-def ke_tensor(X: np.ndarray) -> torch.Tensor:
-    """Mengubah numpy array X (N, H, W, C) menjadi PyTorch Tensor (N, C, H, W)."""
-    arr = np.asarray(X, dtype=np.float32)
-    if arr.ndim == 4 and arr.shape[-1] in [1, 3]:  # (N, H, W, C) -> (N, C, H, W)
-        arr = np.transpose(arr, (0, 3, 1, 2))
-    elif arr.ndim == 3:  # (N, H, W) -> (N, 1, H, W)
-        arr = np.expand_dims(arr, axis=1)
-    elif arr.ndim == 2:
-        arr = np.expand_dims(arr, axis=1)
-    return torch.tensor(arr)
+def _ke_tensor_citra(X: np.ndarray) -> torch.Tensor:
+    return torch.tensor(np.transpose(X, (0, 3, 1, 2)), dtype=torch.float32)
 
 
-# ---- 2. FUNGSI PELATIHAN & PREDIKSI REGRESI ----
 def latih_dan_prediksi(seed: int, final: bool) -> tuple[np.ndarray, np.ndarray | None]:
-    """Mengembalikan (pred_val, pred_test|None) nilai tinggi_air_mm."""
     torch.manual_seed(seed)
     np.random.seed(seed)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Memuat data dari src/protokol/data.py
-    Xtr, ytr, Xva, _, Xte, _ = data.muat()
+    Xtr, ytr, Xva, yva, Xte, _ = data.muat()
+    print(f"[CNN] Data dimuat -> Train: {Xtr.shape}, Val: {Xva.shape}, Test: {Xte.shape}")
 
-    # Preprocessing ke Tensor
-    X_train = ke_tensor(Xtr)
-    y_train = torch.tensor(np.asarray(ytr, dtype=np.float32)).unsqueeze(1)
-    X_val = ke_tensor(Xva)
-    X_test = ke_tensor(Xte) if final and Xte is not None else None
+    ds_train = TensorDataset(_ke_tensor_citra(Xtr), torch.tensor(ytr, dtype=torch.float32))
+    loader_train = DataLoader(ds_train, batch_size=16, shuffle=True)
 
-    # Model, Loss Function (L1/MAE mm), dan Optimizer
-    in_channels = X_train.shape[1] if X_train.ndim == 4 else 1
-    model = CNNWaterRegressor(in_channels=in_channels)
-    criterion = nn.L1Loss()  # Metrik evaluasi utama: MAE (mm)
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    t_val = _ke_tensor_citra(Xva).to(device)
+    model = TinggiAirCNN().to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    criterion = nn.L1Loss()
 
-    # Pelatihan Model (Simulasi)
-    model.train()
-    batch_size = 16
-    epochs = 3
+    best_mae = float("inf")
+    best_pred_val = None
+    best_state = None
 
-    for epoch in range(epochs):
-        for i in range(0, len(X_train), batch_size):
-            bx = X_train[i : i + batch_size]
-            by = y_train[i : i + batch_size]
-
+    epochs = 25
+    for ep in range(1, epochs + 1):
+        model.train()
+        for xb, yb in loader_train:
+            xb, yb = xb.to(device), yb.to(device)
             optimizer.zero_grad()
-            out = model(bx)
-            loss = criterion(out, by)
+            pred = model(xb)
+            loss = criterion(pred, yb)
             loss.backward()
             optimizer.step()
 
-    # Prediksi
-    model.eval()
-    with torch.no_grad():
-        pred_val = model(X_val).squeeze(-1).cpu().numpy()
-        pred_test = (
-            model(X_test).squeeze(-1).cpu().numpy()
-            if X_test is not None
-            else None
-        )
+        model.eval()
+        with torch.no_grad():
+            p_val = model(t_val).cpu().numpy()
+            val_mae = float(np.abs(yva - p_val).mean())
 
-    return pred_val, pred_test
+        if val_mae < best_mae:
+            best_mae = val_mae
+            best_pred_val = p_val.copy()
+            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+
+        if ep % 5 == 0 or ep == 1:
+            print(f"Epoch {ep:02d}/{epochs} | Val MAE: {val_mae:.4f} mm (Terbaik: {best_mae:.4f} mm)")
+
+    pred_test = None
+    if final and Xte is not None and best_state is not None:
+        model.load_state_dict(best_state)
+        model.eval()
+        with torch.no_grad():
+            pred_test = model(_ke_tensor_citra(Xte).to(device)).cpu().numpy()
+
+    return best_pred_val, pred_test
 
 
-# ---- 3. EKSEKUSI UTAMA (EVALUASI AUTOMATIS HASIL DOSEN) ----
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, required=True)
@@ -144,7 +150,6 @@ def main() -> None:
         "--perangkat",
         a.perangkat,
     ]
-
     if pred_test is not None:
         np.save(out / "pred_test.npy", np.asarray(pred_test))
         perintah += ["--pred-test", str(out / "pred_test.npy")]
