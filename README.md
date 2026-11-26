@@ -63,6 +63,28 @@ perubahan hanya lewat *pull request* yang disetujui pembimbing.
    ditekan di aplikasi DSWorkbench.
 3. Perintah reproduksi tim (dinilai pada sprint terakhir): `python run_all.py`.
 
+## Perintah Reproduksi Demo Sprint 1 (Tim 02 — Ruang Cerdas 5 Volt)
+
+Alur lengkap dari data meja uji → pemotong ROI → baseline & setiap jalur model → tabel komparasi:
+
+```bash
+# 1. Ekstrak arsip sesi meja uji ke folder data/ (jika belum diekstrak)
+tar -xzf tim02_sesi-20261116-095756.tar.gz -C data
+
+# 2. Jalankan pemotong ROI Wadah B (1280x720 -> 224x224 RGB)
+python -m src.protokol.pemotong
+
+# 3. Jalankan baseline + seluruh jalur model (CNN, TL, RNN, Transformer) & rakit tabel komparasi
+python run_all.py --seeds 1
+```
+
+Hasil tabel komparasi otomatis tersimpan di `reports/hasil_komparasi.md` dan setiap metrik di `results/<nim>/metrics.json`.
+Untuk menjalankan hanya satu jalur tertentu (misal seed 1, 2, 3):
+
+```bash
+python run_all.py --seeds 1 2 3 --hanya 123450006 123450038 123450043 123450047
+```
+
 ## Yang dibakukan untuk semua tim
 
 - Split latih/validasi beku dari data latih dengan seed 2026 (`src/common/split.py`); data uji
@@ -88,3 +110,20 @@ optimizer dengan alasan tertulis, ≥ 1 regularisasi, tuning hyperparameter deng
 pencarian, ≥ 2 ablation, 3 seed pada konfigurasi akhir.
 
 Lisensi: MIT. Repo ini masuk Galeri Capstone sebagai portofolio setelah semester berakhir.
+
+## Cara Reproduksi Alur Sprint 1
+
+Pastikan seluruh dependensi terpasang di environment Python Anda:
+
+```bash
+pip install -r requirements.txt
+
+```
+
+Untuk menjalankan keseluruhan alur (muat data -> baseline -> evaluasi setiap jalur model -> pembuatan tabel komparasi), jalankan perintah berikut dari direktori utama repositori:
+
+```bash
+python run_all.py
+```
+
+Setelah proses selesai, hasil metrik masing-masing jalur akan tersimpan di folder `results/<nim>/metrics.json` dan tabel komparasi akhir dapat dilihat pada `reports/hasil_komparasi.md`.

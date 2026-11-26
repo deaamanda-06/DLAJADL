@@ -1,0 +1,52 @@
+# Rencana Eksperimen Tim 02: Taksiran Tinggi Air di Wadah dari Citra
+# File: t02-tinggi-air-citra.yaml
+
+tim:
+  id: "02"
+  nama: "Ruang Cerdas 5 Volt"
+  kasus: "Taksiran tinggi air di wadah B dari citra (regresi mm)"
+  pembimbing: "Ade Lailani"
+  koordinator: "Dea Amanda"
+  anggota:
+    - nama: "Dea Amanda"
+      jalur: "CNN dari nol (Modul 05)"
+    - nama: "Hanna Gresia Sinaga"
+      jalur: "Transfer Learning / Fine-Tuning (Modul 06)"
+    - nama: "Enggli Rahmadhani"
+      jalur: "RNN -> LSTM/GRU atas baris citra (Modul 07-08)"
+    - nama: "Benget Sidabutar"
+      jalur: "Transformer encoder atas patch (Modul 09)"
+
+eksperimen:
+  slot_operator: "2026-11-06 09:00-10:00"
+  perkiraan_durasi_menit: 30
+  ulangan_blok: 3
+  total_kondisi: 75  # 3 blok x 25 langkah
+  durasi_kondisi_detik: 4
+  jeda_kondisi_detik: 3
+  kamera:
+    resolusi: "1280x720"
+    interval_detik: 0.5
+    roi_crop: "Daerah wadah B (ROI tetap, diubah ke 224x224)"
+
+faktor:
+  siklus:
+    tipe: "manual"
+    taraf: 1
+    deskripsi: "Mengembalikan air dari wadah B ke wadah A sampai garis nol penggaris di awal tiap blok"
+  pompa:
+    tipe: "otomatis"
+    taraf: 255
+
+labeling:
+  kolom_target: "tinggi_air_mm"
+  metode: "Pembacaan manual penggaris milimeter wadah B oleh 2 orang setelah riak air reda (~2 detik)"
+  pencatatan_waktu: "t_catat_host"
+  rentang_citra_berlabel: "Antara t_selesai_host dan t_catat_host (saat air diam)"
+
+evaluasi:
+  metrik_utama: "MAE (mm)"
+  pelaporan: "Rata-rata ± simpangan dari 3 seed"
+  ukuran_model: "ONNX (KB)"
+  latensi: "ms di laptop meja"
+  model_pembanding_non_dl: "Posisi garis air dari profil kecerahan + regresi linear"

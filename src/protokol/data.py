@@ -1,38 +1,26 @@
-"""Pemuat data kasus tim — MILIK TIM, dibekukan setelah Sprint 0 dengan persetujuan pembimbing.
+"""Pemuat data resmi Tim 02 (Ruang Cerdas 5 Volt).
 
-Isi oleh Penjaga Data & Evaluasi. Kontrak yang dipakai penilai dan baseline starter:
-
-    TUGAS = "klasifikasi"  # atau "regresi"
-    muat() -> (X_train, y_train, X_val, y_val, X_test, y_test)
-
-- X berupa array NumPy (bentuk bebas: [N, fitur], [N, C, H, W], [N, langkah, fitur]);
-  y klasifikasi = label bulat 0..K-1, y regresi = float.
-- Split latih/validasi WAJIB memakai ``src.common.split`` (seed 2026) agar sama di semua laptop.
-- y_test boleh ``None`` bila dataset tidak punya bagian uji; bila ada, data uji hanya dievaluasi
-  sekali di sprint terakhir.
-- Berkas data dibaca dari ``data/`` dan dicantumkan di ``data/MANIFEST.json`` (sidik data).
-
-Contoh lengkap: ``contoh_fashion_mnist.py`` di folder ini.
+Kasus: Taksiran tinggi air di wadah B dari citra (regresi mm).
 """
 from __future__ import annotations
 
 import numpy as np
 
-from src.common import manifest, split
+from src.protokol import pemotong
 
-TUGAS = "klasifikasi"
+TUGAS = "regresi"
 
 
 def muat():
-    """Ganti isi fungsi ini dengan pemuat dataset kasus tim Anda."""
-    m = manifest.baca()
-    raise NotImplementedError(
-        f"Isi src/protokol/data.py untuk dataset {m.get('sumber', '?')} (lihat contoh_fashion_mnist.py)."
+    """Memuat (X_train, y_train, X_val, y_val, X_test, y_test) hasil pemotongan ROI 224x224."""
+    if not pemotong.DATASET_PATH.exists():
+        pemotong.potong()
+    d = np.load(pemotong.DATASET_PATH)
+    return (
+        d["X_train"],
+        d["y_train"],
+        d["X_val"],
+        d["y_val"],
+        d["X_test"],
+        d["y_test"],
     )
-    # --- pola yang lazim ---------------------------------------------------------------
-    # import pandas as pd
-    # df = pd.read_csv(manifest.AKAR / "data" / "latih.csv")
-    # X = df.drop(columns=["target"]).to_numpy(np.float32); y = df["target"].to_numpy()
-    # tr, va = split.indeks(len(X))               # atau split.indeks_urut(len(X)) untuk deret waktu
-    # uji = pd.read_csv(manifest.AKAR / "data" / "uji.csv")   # bila ada
-    # return X[tr], y[tr], X[va], y[va], X_uji, y_uji

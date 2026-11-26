@@ -1,5 +1,10 @@
 {
-  "sumber": "https://… (tautan dataset dari kartu Kasus tim di Workbench)",
-  "berkas": ["data/latih.csv"],
-  "catatan": "Isi pada Sprint 0: versi/tanggal unduh, jumlah baris, dan perubahan (bila ada). Berkas data sendiri tidak di-commit."
+  "sumber": "tim02_sesi-20261116-095756.tar.gz (Meja Uji 5V — sditera-civ)",
+  "berkas": [
+    "data/sesi-20261116-095756/label.csv",
+    "data/sesi-20261116-095756/kamera_index.csv",
+    "data/sesi-20261116-095756/manifest.json",
+    "data/cropped/dataset.npz"
+  ],
+  "catatan": "Sesi 2026-11-16 (75 kondisi, 3 blok, 4005 frame kamera 1280x720). Dipotong ROI Wadah B (820, 300, 1140, 720) ke 224x224 oleh src.protokol.pemotong."
 }
