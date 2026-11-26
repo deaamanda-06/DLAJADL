@@ -1,4 +1,4 @@
-# Catatan model (123450047)
+# Catatan model (benget - 123450047)
 
 ## Alasan optimizer
 
