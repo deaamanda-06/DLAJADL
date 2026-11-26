@@ -1,11 +1,6 @@
+"""Model Transformer Encoder atas patch 16x16 untuk regresi tinggi air (mm).
 
-"""
-Capstone Deep Learning - Transformer Encoder
-NIM: 123450047
-Task: Regresi tinggi air dari citra wadah.
-
-Jalankan:
-python models/123450047/run.py --seed 1
+    python models/123450047/run.py --seed 1 [--final]
 """
 
 from __future__ import annotations

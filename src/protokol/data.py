@@ -7,7 +7,9 @@ data/
 
 Sesi meja nyata dapat dibaca setelah metadata.csv dilengkapi dengan block_id,
 condition_id, timestamp_s, condition_start_s, dan tinggi_air_mm.
-Pemisahan dilakukan berdasarkan block_id (siklus pengisian), bukan per citra.
+Pemisahan dilakukan berdasarkan block_id (siklus pengisian), bukan per citra..
+
+Kasus: Taksiran tinggi air di wadah B dari citra (regresi mm).
 """
 from __future__ import annotations
 
