@@ -1,20 +1,14 @@
 {
-  "model": "rnn_gru_baris",
-  "jalur": "rnn",
-  "nim": "123450043",
-  "seed": 1,
   "metrik": {
-    "val_mae_mm": 1.5536,
-    "val_rmse_mm": 2.0203
+    "val_rmse": 1.703524,
+    "val_mae": 1.193878,
+    "val_r2": 0.524859
   },
-  "onnx_kb": 454.35,
-  "latency_ms": 1.533,
-  "durasi_detik": 185.8,
-  "perangkat": "cpu",
-  "n_fit_frames": 469,
-  "n_val_frames": 475,
-  "val_block": 2,
-  "best_epoch": 8,
-  "final": false,
-  "data_hash": null
+  "seed": 1,
+  "data_hash": "3988fb57c56bfc12",
+  "perangkat": "cpu laptop",
+  "model": "rnn",
+  "n_val": 45,
+  "n_test": 0,
+  "durasi_detik": 34.6
 }
