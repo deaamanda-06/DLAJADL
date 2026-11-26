@@ -1,0 +1,20 @@
+{
+  "model": "rnn_gru_baris",
+  "jalur": "rnn",
+  "nim": "123450043",
+  "seed": 1,
+  "metrik": {
+    "val_mae_mm": 1.5536,
+    "val_rmse_mm": 2.0203
+  },
+  "onnx_kb": 454.35,
+  "latency_ms": 1.533,
+  "durasi_detik": 185.8,
+  "perangkat": "cpu",
+  "n_fit_frames": 469,
+  "n_val_frames": 475,
+  "val_block": 2,
+  "best_epoch": 8,
+  "final": false,
+  "data_hash": null
+}

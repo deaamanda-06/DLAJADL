@@ -1,471 +1,234 @@
-
-"""Model RNN-GRU untuk regresi tinggi air dari citra 224x224.
-
-Pengujian:
-python models/123450043/run.py --seed 1
-
-Data simulasi hanya digunakan untuk smoke test ketika pemuat dataset
-tim masih belum tersedia. Hasil simulasi disimpan terpisah.
 """
+models/123450043/run.py  --  Jalur RNN (GRU atas baris citra), kasus tinggi air wadah B.
 
-from __future__ import annotations
+Contoh:
+    python run.py --data-dir ../../data --seed 1 --out-dir ../../outputs/123450043
 
-import argparse
-import hashlib
-import sys
-import time
-from pathlib import Path
-
+PENTING: bagian load_samples() adalah ADAPTER. Sesuaikan dengan format data
+sesi meja / keluaran pemotong jendela (#4) / PROTOKOL.md di repo tim.
+Skema metrics.json juga harus dicocokkan dengan yang diminta starter dosen.
+"""
+import argparse, json, os, random, time
 import numpy as np
-
-AKAR = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(AKAR))
-
-from src.protokol import data
-
-NIM = Path(__file__).resolve().parent.name
-JALUR = "rnn"
-
-UKURAN = 224
-EPOCH = 5
-BATCH_SIZE = 16
-HIDDEN_SIZE = 48
-
-
-# --------------------------------------------------
-# 1. DATA SIMULASI
-# --------------------------------------------------
-
-def buat_data_simulasi(seed: int):
-    """Membuat citra wadah sintetis untuk menguji alur regresi."""
-
-    rng = np.random.default_rng(seed)
-
-    def buat(n):
-        posisi_air = rng.integers(24, 200, size=n)
-
-        # Format citra: N, H, W, C
-        X = np.empty(
-            (n, UKURAN, UKURAN, 3),
-            dtype=np.float32
-        )
-
-        for i, posisi in enumerate(posisi_air):
-
-            # Bagian atas: udara
-            X[i, :posisi, :, :] = (0.78, 0.78, 0.78)
-
-            # Bagian bawah: air
-            X[i, posisi:, :, :] = (0.12, 0.35, 0.72)
-
-            # Garis permukaan air
-            X[i, max(0, posisi-1):min(UKURAN, posisi+1), :, :] = (
-                0.96, 0.96, 0.96
-            )
-
-        # Noise kecil agar data tidak terlalu seragam
-        X += rng.normal(
-            0, 0.01, X.shape
-        ).astype(np.float32)
-
-        X = np.clip(X, 0, 1)
-
-        # Simulasi skala: 1 piksel = 1 mm.
-        # Bukan kalibrasi penggaris sebenarnya.
-        y = (UKURAN - posisi_air).astype(np.float32)
-
-        return X, y
-
-    X_train, y_train = buat(96)
-    X_val, y_val = buat(32)
-
-    return X_train, y_train, X_val, y_val, None, None
-
-
-# --------------------------------------------------
-# 2. MEMUAT DATA
-# --------------------------------------------------
-
-def siapkan_data(seed: int):
-
-    try:
-        hasil = data.muat()
-        simulasi = False
-
-    except NotImplementedError:
-        print("Pemuat dataset belum tersedia.")
-        print("Menggunakan data simulasi untuk smoke test.")
-
-        hasil = buat_data_simulasi(seed)
-
-        # Protokol simulasi: regresi
-        data.TUGAS = "regresi"
-
-        # Agar evaluator membaca data simulasi yang sama
-        data.muat = lambda: hasil
-
-        # Hash khusus data simulasi, bukan hash dataset asli
-        from src.common import manifest
-
-        def hash_simulasi(extra=b""):
-            h = hashlib.sha256()
-
-            for arr in hasil:
-                if arr is None:
-                    h.update(b"None")
-                else:
-                    a = np.ascontiguousarray(arr)
-                    h.update(str(a.shape).encode())
-                    h.update(a.dtype.str.encode())
-                    h.update(a.tobytes())
-
-            h.update(extra if isinstance(extra, bytes)
-                     else str(extra).encode())
-
-            return h.hexdigest()
-
-        manifest.data_hash = hash_simulasi
-
-        simulasi = True
-
-    if data.TUGAS != "regresi":
-        raise ValueError(
-            "TUGAS harus 'regresi'. "
-            "Koordinasikan perubahan protokol dengan Penjaga Data."
-        )
-
-    return hasil, simulasi
-
-
-# --------------------------------------------------
-# 3. KONVERSI CITRA MENJADI URUTAN BARIS
-# --------------------------------------------------
-
-def citra_ke_urutan(X):
-
-    X = np.asarray(X, dtype=np.float32)
-
-    if X.ndim == 2:
-
-        if X.shape[1] == 224 * 224:
-            X = X.reshape(-1, 224, 224, 1)
-
-        elif X.shape[1] == 224 * 224 * 3:
-            X = X.reshape(-1, 224, 224, 3)
-
-        else:
-            raise ValueError("Ukuran citra flattened tidak sesuai.")
-
-    elif X.ndim == 3:
-
-        X = X[..., None]
-
-    elif X.ndim == 4:
-
-        # Format NCHW -> NHWC
-        if X.shape[1] in (1, 3) and X.shape[2:4] == (224, 224):
-            X = np.transpose(X, (0, 2, 3, 1))
-
-        # Format NHWC
-        elif X.shape[1:3] == (224, 224) and X.shape[3] in (1, 3):
-            pass
-
-        else:
-            raise ValueError(
-                f"Format citra tidak didukung: {X.shape}"
-            )
-
-    else:
-        raise ValueError(f"Dimensi input tidak didukung: {X.shape}")
-
-    if X.shape[1:3] != (224, 224):
-        raise ValueError(f"Ukuran citra harus 224x224: {X.shape}")
-
-    if not np.isfinite(X).all():
-        raise ValueError("Citra mengandung NaN atau inf.")
-
-    if X.max() > 1.5:
-        X = X / 255.0
-
-    # N, 224, 224, C -> N, 224, (224*C)
-    # Setiap baris citra menjadi satu timestep.
-    X = X.reshape(len(X), 224, -1)
-
-    return np.ascontiguousarray(X, dtype=np.float32)
-
-
-# --------------------------------------------------
-# 4. ARSITEKTUR GRU REGRESSION
-# --------------------------------------------------
-
-def buat_model(input_size):
-
-    import torch
-    from torch import nn
-
-    class GRURegressor(nn.Module):
-
-        def __init__(self):
-
-            super().__init__()
-
-            self.gru = nn.GRU(
-                input_size=input_size,
-                hidden_size=HIDDEN_SIZE,
-                num_layers=1,
-                batch_first=True
-            )
-
-            self.dropout = nn.Dropout(0.10)
-
-            self.fc = nn.Linear(
-                HIDDEN_SIZE,
-                1
-            )
-
-        def forward(self, x):
-
-            _, hidden = self.gru(x)
-
-            fitur = self.dropout(hidden[-1])
-
-            output = self.fc(fitur).squeeze(-1)
-
-            # Tinggi air tidak boleh negatif
-            return torch.nn.functional.softplus(output)
-
-    return GRURegressor()
-
-
-# --------------------------------------------------
-# 5. TRAINING DAN PREDIKSI
-# --------------------------------------------------
-
-def latih_dan_prediksi(seed, final, hasil_data):
-
-    import torch
-    from torch import nn
-
-    torch.manual_seed(seed)
+import torch
+import torch.nn as nn
+
+# ----------------------------------------------------------------------------
+# 0. Utilitas
+# ----------------------------------------------------------------------------
+def set_seed(seed: int):
+    random.seed(seed)
     np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
-    torch.set_num_threads(2)
 
-    Xtr, ytr, Xva, yva, Xte, yte = hasil_data
+# ----------------------------------------------------------------------------
+# 1. Data  (ADAPTER -- sesuaikan!)
+# ----------------------------------------------------------------------------
+from data_utils import load_samples, split_by_block, to_arrays  # noqa: E402
 
-    Xtr = citra_ke_urutan(Xtr)
-    Xva = citra_ke_urutan(Xva)
 
-    ytr = np.asarray(ytr, dtype=np.float32).reshape(-1)
-    yva = np.asarray(yva, dtype=np.float32).reshape(-1)
+# ----------------------------------------------------------------------------
+# 2. Model
+# ----------------------------------------------------------------------------
+class RowGRU(nn.Module):
+    """Citra (H x W) dibaca sebagai urutan H baris, tiap baris W fitur."""
+    def __init__(self, in_dim=224, hid=64, layers=1, dropout=0.2):
+        super().__init__()
+        self.rnn = nn.GRU(in_dim, hid, num_layers=layers, batch_first=True,
+                          bidirectional=True)
+        self.head = nn.Sequential(
+            nn.Dropout(dropout), nn.Linear(2 * hid, 32), nn.ReLU(), nn.Linear(32, 1))
 
-    if len(Xtr) != len(ytr) or len(Xva) != len(yva):
-        raise ValueError("Jumlah citra dan label tidak sama.")
+    def forward(self, x):                 # x: (B, H, W)
+        out, _ = self.rnn(x)
+        # rata-rata sepanjang baris lebih stabil daripada hanya langkah terakhir
+        return self.head(out.mean(dim=1)).squeeze(-1)
 
-    if len(Xtr) == 0 or len(Xva) == 0:
-        raise ValueError("Data train atau validasi kosong.")
 
-    x_train = torch.from_numpy(Xtr)
-    y_train = torch.from_numpy(ytr)
+# ----------------------------------------------------------------------------
+# 3. Latih & evaluasi
+# ----------------------------------------------------------------------------
+def make_loader(x, y, bs, shuffle):
+    ds = torch.utils.data.TensorDataset(torch.from_numpy(x), torch.from_numpy(y))
+    return torch.utils.data.DataLoader(ds, batch_size=bs, shuffle=shuffle)
 
-    x_val = torch.from_numpy(Xva)
 
-    model = buat_model(Xtr.shape[-1])
-
-    # Optimizer AdamW
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=0.001,
-        weight_decay=0.0001
-    )
-
-    # Loss regresi
-    criterion = nn.MSELoss()
-
-    print("\nMulai training GRU...")
-    print("Input:", tuple(Xtr.shape))
-    print("Output target: 1 nilai tinggi air (mm)")
-
-    for epoch in range(EPOCH):
-
-        model.train()
-
-        indeks = torch.randperm(len(x_train))
-
-        total_loss = 0.0
-
-        for i in range(0, len(indeks), BATCH_SIZE):
-
-            idx = indeks[i:i + BATCH_SIZE]
-
-            xb = x_train[idx]
-            yb = y_train[idx]
-
-            optimizer.zero_grad()
-
-            prediksi = model(xb)
-
-            loss = criterion(prediksi, yb)
-
-            loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(
-                model.parameters(),
-                max_norm=1.0
-            )
-
-            optimizer.step()
-
-            total_loss += loss.item() * len(idx)
-
-        rata_loss = total_loss / len(x_train)
-
-        print(
-            f"Epoch {epoch + 1}/{EPOCH} "
-            f"- Loss: {rata_loss:.4f}"
-        )
-
-    # Prediksi validasi
+@torch.no_grad()
+def predict(model, x, device, bs=64):
     model.eval()
-
-    with torch.no_grad():
-
-        pred_val = model(x_val).cpu().numpy()
-
-        pred_test = None
-
-        if final and Xte is not None and yte is not None:
-
-            x_test = torch.from_numpy(
-                citra_ke_urutan(Xte)
-            )
-
-            pred_test = model(x_test).cpu().numpy()
-
-    return pred_val, pred_test
+    out = []
+    for i in range(0, len(x), bs):
+        xb = torch.from_numpy(x[i:i + bs]).to(device)
+        out.append(model(xb).cpu().numpy())
+    return np.concatenate(out)
 
 
-# --------------------------------------------------
-# 6. EVALUASI DENGAN STARTER DOSEN
-# --------------------------------------------------
+def mae_mm(model, x, y_mm, y_mean, y_std, device):
+    pred = predict(model, x, device) * y_std + y_mean
+    return float(np.mean(np.abs(pred - y_mm)))
 
-def jalankan_evaluasi(
-    seed,
-    pred_val_path,
-    pred_test_path,
-    durasi,
-    perangkat,
-    output_metrics
-):
 
-    import src.common.evaluate as evaluator
+def fit(xtr, ytr_mm, xva, yva_mm, stats, args, device, epochs=None, patience=15):
+    x_mean, x_std, y_mean, y_std = stats
+    xtr_n = (xtr - x_mean) / x_std
+    ytr_n = (ytr_mm - y_mean) / y_std
+    xva_n = (xva - x_mean) / x_std if xva is not None else None
 
-    args = [
-        "evaluate.py",
-        "--nim", NIM,
-        "--model", JALUR,
-        "--seed", str(seed),
-        "--pred-val", str(pred_val_path),
-        "--durasi", str(round(durasi, 2)),
-        "--perangkat", perangkat,
-        "--out", str(output_metrics)
-    ]
+    model = RowGRU(hid=args.hidden).to(device)
+    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    loss_fn = nn.HuberLoss()
+    loader = make_loader(xtr_n.astype(np.float32), ytr_n.astype(np.float32),
+                         args.batch_size, True)
 
-    if pred_test_path is not None:
-        args += ["--pred-test", str(pred_test_path)]
+    best, best_ep, best_state, bad = 1e9, 0, None, 0
+    n_ep = epochs or args.epochs
+    for ep in range(1, n_ep + 1):
+        model.train()
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            opt.zero_grad()
+            loss = loss_fn(model(xb), yb)
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            opt.step()
+        if xva_n is not None:
+            va = mae_mm(model, xva_n.astype(np.float32), yva_mm, y_mean, y_std, device)
+            if va < best:
+                best, best_ep, bad = va, ep, 0
+                best_state = {k: v.clone() for k, v in model.state_dict().items()}
+            else:
+                bad += 1
+            if ep % 5 == 0:
+                print(f"ep {ep:03d} | val MAE {va:.2f} mm | best {best:.2f} @ {best_ep}")
+            if bad >= patience:
+                break
+    if best_state is not None and epochs is None:
+        model.load_state_dict(best_state)
+    return model, best_ep, best
 
-    argv_lama = sys.argv
 
+# ----------------------------------------------------------------------------
+# 4. ONNX + latensi
+# ----------------------------------------------------------------------------
+def export_onnx(model, path, device):
+    model.eval()
+    dummy = torch.zeros(1, 224, 224, device=device)
+    kw = dict(input_names=["image"], output_names=["mm"],
+              dynamic_axes={"image": {0: "batch"}}, opset_version=17)
+    try:                                   # torch baru: pakai exporter klasik
+        torch.onnx.export(model, dummy, path, dynamo=False, **kw)
+    except TypeError:                      # torch lama tidak punya argumen dynamo
+        torch.onnx.export(model, dummy, path, **kw)
+    return os.path.getsize(path) / 1024.0
+
+
+def latency_ms(onnx_path, n=100):
     try:
-        sys.argv = args
-        evaluator.main()
+        import onnxruntime as ort
+        sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+        x = np.zeros((1, 224, 224), dtype=np.float32)
+        for _ in range(10):
+            sess.run(None, {"image": x})
+        t = time.perf_counter()
+        for _ in range(n):
+            sess.run(None, {"image": x})
+        return (time.perf_counter() - t) / n * 1000.0
+    except Exception as e:
+        print("Latensi ONNX gagal diukur:", e)
+        return None
 
-    finally:
-        sys.argv = argv_lama
 
-
-# --------------------------------------------------
-# 7. PROGRAM UTAMA
-# --------------------------------------------------
-
+# ----------------------------------------------------------------------------
+# 5. Main
+# ----------------------------------------------------------------------------
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data-dir", default="data")          # run_all.py tidak mengirim argumen ini
+    ap.add_argument("--out-dir", default="results/123450043")
+    ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--final", action="store_true",
+                    help="evaluasi data uji (blok uji) SEKALI, hanya di sprint terakhir")
+    ap.add_argument("--epochs", type=int, default=100)
+    ap.add_argument("--batch-size", type=int, default=16)
+    ap.add_argument("--lr", type=float, default=1e-3)
+    ap.add_argument("--hidden", type=int, default=64)
+    ap.add_argument("--test-block", type=int, default=3)
+    ap.add_argument("--val-block", type=int, default=2)
+    args = ap.parse_args()
 
-    parser = argparse.ArgumentParser()
+    t0 = time.perf_counter()
+    set_seed(args.seed)
+    os.makedirs(args.out_dir, exist_ok=True)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    parser.add_argument("--seed", type=int, required=True)
+    samples = load_samples(args.data_dir)
+    train, val, test = split_by_block(samples, args.test_block, args.val_block)
+    print(f"frame: train={len(train)} val={len(val)} test={len(test)}")
+    xtr, ytr = to_arrays(train); xva, yva = to_arrays(val)
 
-    parser.add_argument(
-        "--final",
-        action="store_true"
-    )
+    # normalisasi dari data LATIH saja
+    stats = (float(xtr.mean()), float(xtr.std() + 1e-8), float(ytr.mean()), float(ytr.std() + 1e-8))
 
-    parser.add_argument(
-        "--perangkat",
-        default="cpu laptop"
-    )
+    # Latih di blok latih, pilih epoch terbaik di blok validasi
+    model, best_ep, best_val = fit(xtr, ytr, xva, yva, stats, args, device)
+    x_mean, x_std, y_mean, y_std = stats
+    pva = predict(model, ((xva - x_mean) / x_std).astype(np.float32), device) * y_std + y_mean
+    val_rmse = float(np.sqrt(np.mean((pva - yva) ** 2)))
+    print(f"epoch terbaik={best_ep}, val MAE={best_val:.2f} mm, val RMSE={val_rmse:.2f} mm")
 
-    a = parser.parse_args()
+    test_mae = None
+    n_fit = len(xtr)
+    if args.final:
+        # latih ulang di blok latih+validasi dengan epoch tsb, uji SEKALI di blok uji
+        xte, yte = to_arrays(test)
+        x_all = np.concatenate([xtr, xva]); y_all = np.concatenate([ytr, yva])
+        stats = (float(x_all.mean()), float(x_all.std() + 1e-8),
+                 float(y_all.mean()), float(y_all.std() + 1e-8))
+        set_seed(args.seed)
+        model, _, _ = fit(x_all, y_all, None, None, stats, args, device, epochs=best_ep)
+        x_mean, x_std, y_mean, y_std = stats
+        test_mae = mae_mm(model, ((xte - x_mean) / x_std).astype(np.float32), yte, y_mean, y_std, device)
+        n_fit = len(x_all)
+        print(f"TEST MAE (blok {args.test_block}) = {test_mae:.2f} mm")
 
-    print("=" * 50)
-    print("CAPSTONE DEEP LEARNING - MODEL RNN GRU")
-    print("NIM:", NIM)
-    print("Seed:", a.seed)
-    print("=" * 50)
+    # ONNX: bungkus normalisasi agar model menerima citra mentah 0..1 dan keluar mm
+    class Wrapped(nn.Module):
+        def __init__(s, m):
+            super().__init__(); s.m = m
+        def forward(s, x):
+            return s.m((x - x_mean) / x_std) * y_std + y_mean
+    onnx_path = os.path.join(args.out_dir, f"rnn_seed{args.seed}.onnx")
+    size_kb = export_onnx(Wrapped(model).to(device), onnx_path, device)
+    lat = latency_ms(onnx_path)
 
-    hasil_data, simulasi = siapkan_data(a.seed)
-
-    awal = time.time()
-
-    pred_val, pred_test = latih_dan_prediksi(
-        a.seed,
-        a.final,
-        hasil_data
-    )
-
-    durasi = time.time() - awal
-
-    # Simulasi dipisahkan agar tidak menimpa hasil eksperimen asli
-    jenis = "simulasi" if simulasi else None
-
-    out = AKAR / "results" / NIM
-
-    if jenis:
-        out = out / jenis
-
-    out.mkdir(parents=True, exist_ok=True)
-
-    pred_val_path = out / "pred_val.npy"
-
-    np.save(pred_val_path, pred_val)
-
-    pred_test_path = None
-
-    if pred_test is not None:
-
-        pred_test_path = out / "pred_test.npy"
-
-        np.save(pred_test_path, pred_test)
-
-    output_metrics = out / "metrics.json"
-
-    perangkat = a.perangkat
-
-    if simulasi:
-        perangkat += " - DATA SIMULASI, BUKAN HASIL EKSPERIMEN"
-
-    jalankan_evaluasi(
-        a.seed,
-        pred_val_path,
-        pred_test_path,
-        durasi,
-        perangkat,
-        output_metrics
-    )
-
-    print("\nPENGUJIAN BERHASIL")
-    print("Prediksi:", pred_val_path)
-    print("Metrics:", output_metrics)
-    print("Durasi:", round(durasi, 2), "detik")
+    # TODO: cocokkan kunci dengan skema tim (models/TEMPLATE/run.py) dan isi data_hash
+    metrik = {"val_mae_mm": round(best_val, 4), "val_rmse_mm": round(val_rmse, 4)}
+    if test_mae is not None:
+        metrik["test_mae_mm"] = round(test_mae, 4)
+    metrics = {
+        "model": "rnn_gru_baris",
+        "jalur": "rnn",
+        "nim": "123450043",
+        "seed": args.seed,
+        "metrik": metrik,
+        "onnx_kb": round(size_kb, 2),
+        "latency_ms": None if lat is None else round(lat, 3),
+        "durasi_detik": round(time.perf_counter() - t0, 1),
+        "perangkat": device,
+        "n_fit_frames": int(n_fit),
+        "n_val_frames": int(len(xva)),
+        "val_block": args.val_block,
+        "best_epoch": best_ep,
+        "final": bool(args.final),
+        "data_hash": None,   # TODO: harus sama dengan MANIFEST/PROTOKOL tim
+    }
+    with open(os.path.join(args.out_dir, "metrics.json"), "w") as f:
+        json.dump(metrics, f, indent=2)
+    print(json.dumps(metrics, indent=2))
 
 
 if __name__ == "__main__":
