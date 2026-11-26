@@ -1,8 +1,6 @@
 # Protokol evaluasi tim — Tim 02 (Ruang Cerdas 5 Volt)
 
-Diisi Penjaga Data & Evaluasi pada Sprint 0, digabung ke `main` lewat *pull request* yang
-disetujui pembimbing, lalu **dibekukan**. Perubahan setelah itu hanya lewat *pull request*
-baru yang disetujui pembimbing.
+## Identitas dan kasus
 
 | Butir | Isi |
 |---|---|
