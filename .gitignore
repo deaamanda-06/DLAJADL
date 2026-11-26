@@ -13,3 +13,5 @@ __pycache__/
 data/sesi_primer/
 data/*.tar.gz
 data/*.tar
+
+desktop.ini
