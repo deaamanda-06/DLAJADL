@@ -1,10 +1,117 @@
 {
-  "sumber": "tim02_sesi-20261116-095756.tar.gz (Meja Uji 5V — sditera-civ)",
+  "sumber": "tim02_sesi-20261116-095756.tar.gz (Meja Uji 5V)",
   "berkas": [
     "data/sesi-20261116-095756/label.csv",
     "data/sesi-20261116-095756/kamera_index.csv",
     "data/sesi-20261116-095756/manifest.json",
-    "data/cropped/dataset.npz"
+    "data/cropped_blok_mm/dataset.npz",
+    "data/cropped_blok_mm/index.csv",
+    "data/cropped_blok_mm/dataset_info.json"
   ],
-  "catatan": "Sesi 2026-11-16 (75 kondisi, 3 blok, 4005 frame kamera 1280x720). Dipotong ROI Wadah B (820, 300, 1140, 720) ke 224x224 oleh src.protokol.pemotong."
+  "catatan": "Dataset acuan dengan split per ulangan_blok dan target dalam mm. Data primer asli dipertahankan. Ditemukan 14 penurunan label dalam blok. Pengosongan wadah berulang dilaporkan selama sesi. Validasi integritas dan reproduksibilitas lokal berhasil. Kesamaan hash seluruh anggota belum terverifikasi.",
+  "tanggal_sesi": "2026-11-16",
+  "tim": 2,
+  "mode": "primer",
+  "tugas": "regresi",
+  "jumlah_kondisi": 75,
+  "jumlah_blok": 3,
+  "kondisi_per_blok": 25,
+  "kondisi_dikeluarkan": 0,
+  "jumlah_frame_sumber": 4005,
+  "jumlah_frame_dipakai": 373,
+  "jumlah_frame_tidak_dipilih": 3632,
+  "kolom_label_sumber": "tinggi_air_mm",
+  "satuan_label_sumber": "cm",
+  "satuan_target": "mm",
+  "faktor_konversi": 10,
+  "roi": [
+    820,
+    300,
+    1140,
+    720
+  ],
+  "ukuran_citra": [
+    224,
+    224
+  ],
+  "split_blok": {
+    "1": "train",
+    "2": "val",
+    "3": "test"
+  },
+  "jumlah_frame_split": {
+    "train": 125,
+    "val": 123,
+    "test": 125
+  },
+  "dataset_acuan": "data/cropped_blok_mm/dataset.npz",
+  "dataset_sebelumnya": "data/cropped/dataset.npz",
+  "preprocessing": "src/protokol/pemotong_blok.py",
+  "pemuat_data_acuan": "src/protokol/data_blok.py",
+  "schema": "tim02_dataset_v1",
+  "data_hash": "417c70ad079cdb5a",
+  "data_hash_sha256": "417c70ad079cdb5a220d2a6ff796144aada403d4a8e8597d65e40e88e8d31e4e",
+  "label_source_sha256": "2a6a959835169f1695051f21b646e9529f55cb2457a2f083af91e6cd0245c124",
+  "index_sha256": "e6c99bbcaa6e508aabdd7ad81d7dc1b427566c22be5536afe8de06685a10563f",
+  "dataset_npz_sha256": "75355657546b06ceb39da0bf4e92ed0c99b5e1700a58413af04c1d2a219ddd9e",
+  "array_info": {
+    "X_test": {
+      "shape": [
+        125,
+        3,
+        224,
+        224
+      ],
+      "dtype": "<f4",
+      "sha256": "3d5058c2b3ca73ac84cbcd6a12441e16dd900c760a6598191e678831f8026681"
+    },
+    "X_train": {
+      "shape": [
+        125,
+        3,
+        224,
+        224
+      ],
+      "dtype": "<f4",
+      "sha256": "8b369de2bf12966056d9a2eb54a2787ff4cbf55eb1d5f4d48dfbe25bcd11cbab"
+    },
+    "X_val": {
+      "shape": [
+        123,
+        3,
+        224,
+        224
+      ],
+      "dtype": "<f4",
+      "sha256": "4ff5dc7b469431d5ae40a35818e8632a1f4e3ed43ab5197d645465a43cde7f74"
+    },
+    "y_test": {
+      "shape": [
+        125
+      ],
+      "dtype": "<f4",
+      "sha256": "0c6d598b7df09eb60c44053f5b019e88e809d535b6394b314e776d415d935c9f"
+    },
+    "y_train": {
+      "shape": [
+        125
+      ],
+      "dtype": "<f4",
+      "sha256": "47cfdb6b2f236ec7440f06c12e697f8ecbfa5217988b2a171161788ce8950e9c"
+    },
+    "y_val": {
+      "shape": [
+        123
+      ],
+      "dtype": "<f4",
+      "sha256": "20c69e48fdcc2317f021cca4bc230f747faf8530425ce8ad666c0fcb5efe76fa"
+    }
+  },
+  "status_verifikasi": {
+    "integritas_dataset_lokal": true,
+    "hash_reproduktif_lokal": true,
+    "hash_gru_identik": true,
+    "hash_baseline_identik": true,
+    "hash_seluruh_anggota_terverifikasi": false
+  }
 }
