@@ -61,9 +61,7 @@ class TinggiAirCNN(nn.Module):
 
 
 def _ke_tensor_citra(X: np.ndarray) -> torch.Tensor:
-    if X.ndim == 4 and X.shape[1] in (1, 3):
-        return torch.tensor(X, dtype=torch.float32)
-    return torch.tensor(np.transpose(X, (0, 3, 1, 2)), dtype=torch.float32)
+    return torch.tensor(X if X.shape[1] == 3 else np.transpose(X, (0, 3, 1, 2)), dtype=torch.float32)
 
 
 def latih_dan_prediksi(seed: int, final: bool) -> tuple[np.ndarray, np.ndarray | None]:
