@@ -1,0 +1,8 @@
+
+{
+  "sumber": "Simulasi sintetis internal untuk smoke test hashtag 6",
+  "berkas": [
+    "data/simulasi_smoke.csv"
+  ],
+  "catatan": "240 citra grayscale 8x8, target tinggi_air_mm, generator seed 20261110. Bukan data eksperimen asli."
+}

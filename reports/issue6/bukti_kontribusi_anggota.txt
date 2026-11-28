@@ -1,0 +1,23 @@
+﻿b40cf5b | deaamanda-06 | 2026-10-30 | Initial commit
+6109a37 | deaamanda-06 | 2026-10-30 | Add files via upload
+8a4fe02 | engliramdhnii | 2026-10-31 | first commit: models
+9e38b3d | HANNA GRESIA SINAGA | 2026-10-31 | first commit hanna sayang
+363f7bb | hannahanna123450038-byte | 2026-11-07 | feat: tambah kerangka run.py untuk jalur TL (224x224)
+36966cd | Dea Amanda | 2026-11-09 | feat(cnn): uji run.py dan metrics.json data simulasi berhasil
+5fbc3ad | Bengetsidabutar | 2026-11-10 | 123450047
+654ca3b | Enggli Rahmadhani | 2026-11-10 | feat: implement GRU regression smoke test
+6b029d9 | hanna123450038-byte | 2026-11-10 | mengerjakan tugas #7
+6b56994 | Bengetsidabutar | 2026-11-10 | feat(123450047): implement transformer encoder
+cc45818 | hanna123450038-byte | 2026-11-22 | feat: integrasi data primer meja uji, pemotong ROI, dan tabel komparasi Sprint 1
+414b8c8 | Dea Amanda | 2026-11-22 | feat(cnn): perbarui ROI wadah B, latih CNN vertikal seed 1 (MAE 1.40 mm)
+eeb3364 | Dea Amanda | 2026-11-22 | fix(cnn): sesuaikan dimensi tensor (N,3,224,224) dan perbarui metrics.json
+2b147f9 | Enggli Rahmadhani | 2026-11-26 | RNN GRU seed 1 + pembanding non-DL (#18, #8)
+fded9d7 | Enggli Rahmadhani | 2026-11-26 | RNN GRU seed 1 lewat data.muat() dan evaluator tim (#18)
+b895c29 | Bengetsidabutar | 2026-11-26 | feat(trf): latih Transformer pada data primer meja (seed 1)
+8053b02 | Enggli Rahmadhani | 2026-11-26 | Pembanding non-DL: Ridge pada fitur piksel (#8)
+b243b16 | BENGET SIDABUTAR | 2026-11-27 | docs (catatan.md) : tambahkan nama di samping NIM
+b053c1a | BENGET SIDABUTAR | 2026-11-27 | docs (catatan.md) : memasukkan "kelompok 2"
+f9378ea | hanna123450038-byte | 2026-11-28 | fix: sinkronkan hasil terbaru seluruh jalur dan tabel komparasi Sprint 1
+0705a8b | Dea Amanda | 2026-11-28 | ini mah udah dari kemaren
+049b95e | Enggli Rahmadhani | 2026-11-28 | fix(rnn): perbaiki konversi citra ke urutan GRU untuk integrasi simulasi (#6)
+1c4185d | Enggli Rahmadhani | 2026-11-28 | feat(integrasi): integrasikan seluruh model pada data simulasi Sprint 1 (#6)
