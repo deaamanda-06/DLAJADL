@@ -1,11 +1,15 @@
+"""Model RNN-GRU untuk regresi tinggi air dari citra.
 
-"""Model RNN-GRU untuk regresi tinggi air dari citra 224x224.
+Mendukung:
+- Data simulasi grayscale 8x8.
+- Data primer RGB 224x224.
+- Format citra NCHW dan NHWC.
 
 Pengujian:
-python models/123450043/run.py --seed 1
+    python models/123450043/run.py --seed 1
 
 Data simulasi hanya digunakan untuk smoke test ketika pemuat dataset
-tim masih belum tersedia. Hasil simulasi disimpan terpisah.
+tim masih belum tersedia. Hasil simulasi internal disimpan terpisah.
 """
 
 from __future__ import annotations
@@ -59,9 +63,12 @@ def buat_data_simulasi(seed: int):
             X[i, posisi:, :, :] = (0.12, 0.35, 0.72)
 
             # Garis permukaan air
-            X[i, max(0, posisi-1):min(UKURAN, posisi+1), :, :] = (
-                0.96, 0.96, 0.96
-            )
+            X[
+                i,
+                max(0, posisi - 1):min(UKURAN, posisi + 1),
+                :,
+                :
+            ] = (0.96, 0.96, 0.96)
 
         # Noise kecil agar data tidak terlalu seragam
         X += rng.normal(
@@ -93,6 +100,7 @@ def siapkan_data(seed: int):
         simulasi = False
 
     except NotImplementedError:
+
         print("Pemuat dataset belum tersedia.")
         print("Menggunakan data simulasi untuk smoke test.")
 
@@ -108,19 +116,25 @@ def siapkan_data(seed: int):
         from src.common import manifest
 
         def hash_simulasi(extra=b""):
+
             h = hashlib.sha256()
 
             for arr in hasil:
+
                 if arr is None:
                     h.update(b"None")
+
                 else:
                     a = np.ascontiguousarray(arr)
+
                     h.update(str(a.shape).encode())
                     h.update(a.dtype.str.encode())
                     h.update(a.tobytes())
 
-            h.update(extra if isinstance(extra, bytes)
-                     else str(extra).encode())
+            h.update(
+                extra if isinstance(extra, bytes)
+                else str(extra).encode()
+            )
 
             return h.hexdigest()
 
@@ -129,9 +143,11 @@ def siapkan_data(seed: int):
         simulasi = True
 
     if data.TUGAS != "regresi":
+
         raise ValueError(
             "TUGAS harus 'regresi'. "
-            "Koordinasikan perubahan protokol dengan Penjaga Data."
+            "Koordinasikan perubahan protokol "
+            "dengan Penjaga Data."
         )
 
     return hasil, simulasi
@@ -141,57 +157,83 @@ def siapkan_data(seed: int):
 # 3. KONVERSI CITRA MENJADI URUTAN BARIS
 # --------------------------------------------------
 
-def citra_ke_urutan(X):
+def citra_ke_urutan(X: np.ndarray) -> np.ndarray:
+    """
+    Mengubah citra menjadi urutan baris untuk input GRU.
+
+    Format yang didukung:
+        (N, H, W)
+        (N, C, H, W)
+        (N, H, W, C)
+
+    Format output:
+        (N, H, W*C)
+
+    Keterangan:
+        N = jumlah sampel
+        H = tinggi citra / panjang urutan
+        W = lebar citra
+        C = jumlah channel
+
+    Contoh:
+        (216, 1, 8, 8) -> (216, 8, 8)
+        (253, 3, 224, 224) -> (253, 224, 672)
+    """
 
     X = np.asarray(X, dtype=np.float32)
 
-    if X.ndim == 2:
+    if not np.isfinite(X).all():
 
-        if X.shape[1] == 224 * 224:
-            X = X.reshape(-1, 224, 224, 1)
+        raise ValueError(
+            "Data citra mengandung NaN atau Inf."
+        )
 
-        elif X.shape[1] == 224 * 224 * 3:
-            X = X.reshape(-1, 224, 224, 3)
+    # Citra grayscale tanpa dimensi channel
+    if X.ndim == 3:
 
-        else:
-            raise ValueError("Ukuran citra flattened tidak sesuai.")
+        return np.ascontiguousarray(
+            X,
+            dtype=np.float32
+        )
 
-    elif X.ndim == 3:
+    if X.ndim != 4:
 
-        X = X[..., None]
+        raise ValueError(
+            f"Dimensi citra tidak valid: {X.shape}"
+        )
 
-    elif X.ndim == 4:
+    # Format NCHW -> NHWC
+    if X.shape[1] in (1, 3):
 
-        # Format NCHW -> NHWC
-        if X.shape[1] in (1, 3) and X.shape[2:4] == (224, 224):
-            X = np.transpose(X, (0, 2, 3, 1))
+        X = np.transpose(
+            X,
+            (0, 2, 3, 1)
+        )
 
-        # Format NHWC
-        elif X.shape[1:3] == (224, 224) and X.shape[3] in (1, 3):
-            pass
+    # Format NHWC sudah benar
+    elif X.shape[-1] in (1, 3):
 
-        else:
-            raise ValueError(
-                f"Format citra tidak didukung: {X.shape}"
-            )
+        pass
 
     else:
-        raise ValueError(f"Dimensi input tidak didukung: {X.shape}")
 
-    if X.shape[1:3] != (224, 224):
-        raise ValueError(f"Ukuran citra harus 224x224: {X.shape}")
+        raise ValueError(
+            f"Format channel tidak dikenali: {X.shape}"
+        )
 
-    if not np.isfinite(X).all():
-        raise ValueError("Citra mengandung NaN atau inf.")
+    n, h, w, c = X.shape
 
-    if X.max() > 1.5:
-        X = X / 255.0
+    # Setiap baris citra menjadi satu langkah urutan.
+    X = X.reshape(
+        n,
+        h,
+        w * c
+    )
 
-    # N, 224, 224, C -> N, 224, (224*C)
-    # Setiap baris citra menjadi satu timestep.
-    X = X.reshape(len(X), 224, -1)
-
-    return np.ascontiguousarray(X, dtype=np.float32)
+    return np.ascontiguousarray(
+        X,
+        dtype=np.float32
+    )
 
 
 # --------------------------------------------------
@@ -253,23 +295,67 @@ def latih_dan_prediksi(seed, final, hasil_data):
 
     Xtr, ytr, Xva, yva, Xte, yte = hasil_data
 
+    # Informasi dataset sebelum konversi
+    print("\nDIMENSI DATA AWAL")
+    print("Training  :", Xtr.shape)
+    print("Validasi  :", Xva.shape)
+    print(
+        "Testing   :",
+        Xte.shape if Xte is not None else "Tidak tersedia"
+    )
+
+    # Konversi citra menjadi urutan input GRU
     Xtr = citra_ke_urutan(Xtr)
     Xva = citra_ke_urutan(Xva)
 
-    ytr = np.asarray(ytr, dtype=np.float32).reshape(-1)
-    yva = np.asarray(yva, dtype=np.float32).reshape(-1)
+    ytr = np.asarray(
+        ytr,
+        dtype=np.float32
+    ).reshape(-1)
 
+    yva = np.asarray(
+        yva,
+        dtype=np.float32
+    ).reshape(-1)
+
+    # Validasi jumlah data
     if len(Xtr) != len(ytr) or len(Xva) != len(yva):
-        raise ValueError("Jumlah citra dan label tidak sama.")
+
+        raise ValueError(
+            "Jumlah citra dan label tidak sama."
+        )
 
     if len(Xtr) == 0 or len(Xva) == 0:
-        raise ValueError("Data train atau validasi kosong.")
 
+        raise ValueError(
+            "Data train atau validasi kosong."
+        )
+
+    if Xtr.shape[-1] != Xva.shape[-1]:
+
+        raise ValueError(
+            "Jumlah fitur training dan validasi berbeda."
+        )
+
+    if not np.isfinite(ytr).all():
+
+        raise ValueError(
+            "Label training mengandung NaN atau Inf."
+        )
+
+    if not np.isfinite(yva).all():
+
+        raise ValueError(
+            "Label validasi mengandung NaN atau Inf."
+        )
+
+    # Konversi ke tensor PyTorch
     x_train = torch.from_numpy(Xtr)
     y_train = torch.from_numpy(ytr)
 
     x_val = torch.from_numpy(Xva)
 
+    # Input size ditentukan secara dinamis
     model = buat_model(Xtr.shape[-1])
 
     # Optimizer AdamW
@@ -282,9 +368,17 @@ def latih_dan_prediksi(seed, final, hasil_data):
     # Loss regresi
     criterion = nn.MSELoss()
 
+    print("\nKONFIGURASI GRU")
+    print("Input training :", tuple(Xtr.shape))
+    print("Input validasi :", tuple(Xva.shape))
+    print("Sequence length:", Xtr.shape[1])
+    print("Input size     :", Xtr.shape[-1])
+    print("Hidden size    :", HIDDEN_SIZE)
+    print("Epoch          :", EPOCH)
+    print("Batch size     :", BATCH_SIZE)
+    print("Output         : 1 nilai tinggi air (mm)")
+
     print("\nMulai training GRU...")
-    print("Input:", tuple(Xtr.shape))
-    print("Output target: 1 nilai tinggi air (mm)")
 
     for epoch in range(EPOCH):
 
@@ -334,13 +428,39 @@ def latih_dan_prediksi(seed, final, hasil_data):
 
         pred_test = None
 
+        # Prediksi testing hanya pada sprint terakhir
         if final and Xte is not None and yte is not None:
 
-            x_test = torch.from_numpy(
-                citra_ke_urutan(Xte)
-            )
+            Xte = citra_ke_urutan(Xte)
+
+            if Xte.shape[-1] != Xtr.shape[-1]:
+
+                raise ValueError(
+                    "Jumlah fitur testing dan training berbeda."
+                )
+
+            x_test = torch.from_numpy(Xte)
 
             pred_test = model(x_test).cpu().numpy()
+
+    # Pastikan prediksi berbentuk vektor
+    pred_val = np.asarray(
+        pred_val,
+        dtype=np.float32
+    ).reshape(-1)
+
+    if pred_test is not None:
+
+        pred_test = np.asarray(
+            pred_test,
+            dtype=np.float32
+        ).reshape(-1)
+
+    print("\nHASIL PREDIKSI")
+    print("Prediksi validasi:", pred_val.shape)
+
+    if pred_test is not None:
+        print("Prediksi testing :", pred_test.shape)
 
     return pred_val, pred_test
 
@@ -372,15 +492,22 @@ def jalankan_evaluasi(
     ]
 
     if pred_test_path is not None:
-        args += ["--pred-test", str(pred_test_path)]
+
+        args += [
+            "--pred-test",
+            str(pred_test_path)
+        ]
 
     argv_lama = sys.argv
 
     try:
+
         sys.argv = args
+
         evaluator.main()
 
     finally:
+
         sys.argv = argv_lama
 
 
@@ -392,7 +519,11 @@ def main():
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--seed", type=int, required=True)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        required=True
+    )
 
     parser.add_argument(
         "--final",
@@ -412,8 +543,10 @@ def main():
     print("Seed:", a.seed)
     print("=" * 50)
 
+    # Memuat dataset
     hasil_data, simulasi = siapkan_data(a.seed)
 
+    # Mulai pengukuran waktu
     awal = time.time()
 
     pred_val, pred_test = latih_dan_prediksi(
@@ -424,35 +557,53 @@ def main():
 
     durasi = time.time() - awal
 
-    # Simulasi dipisahkan agar tidak menimpa hasil eksperimen asli
+    # Simulasi internal dipisahkan agar tidak
+    # menimpa hasil eksperimen asli.
     jenis = "simulasi" if simulasi else None
 
     out = AKAR / "results" / NIM
 
     if jenis:
+
         out = out / jenis
 
-    out.mkdir(parents=True, exist_ok=True)
+    out.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
+    # Simpan prediksi validasi
     pred_val_path = out / "pred_val.npy"
 
-    np.save(pred_val_path, pred_val)
+    np.save(
+        pred_val_path,
+        pred_val
+    )
 
+    # Simpan prediksi testing jika tersedia
     pred_test_path = None
 
     if pred_test is not None:
 
         pred_test_path = out / "pred_test.npy"
 
-        np.save(pred_test_path, pred_test)
+        np.save(
+            pred_test_path,
+            pred_test
+        )
 
     output_metrics = out / "metrics.json"
 
     perangkat = a.perangkat
 
     if simulasi:
-        perangkat += " - DATA SIMULASI, BUKAN HASIL EKSPERIMEN"
 
+        perangkat += (
+            " - DATA SIMULASI, "
+            "BUKAN HASIL EKSPERIMEN"
+        )
+
+    # Evaluasi menggunakan starter resmi dosen
     jalankan_evaluasi(
         a.seed,
         pred_val_path,
@@ -462,10 +613,16 @@ def main():
         output_metrics
     )
 
-    print("\nPENGUJIAN BERHASIL")
-    print("Prediksi:", pred_val_path)
-    print("Metrics:", output_metrics)
-    print("Durasi:", round(durasi, 2), "detik")
+    print("\n" + "=" * 50)
+    print("PENGUJIAN GRU BERHASIL")
+    print("=" * 50)
+
+    print("NIM      :", NIM)
+    print("Model    :", JALUR)
+    print("Seed     :", a.seed)
+    print("Prediksi :", pred_val_path)
+    print("Metrics  :", output_metrics)
+    print("Durasi   :", round(durasi, 2), "detik")
 
 
 if __name__ == "__main__":
