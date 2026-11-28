@@ -37,7 +37,7 @@ def main():
     blocks = defaultdict(list)
 
     for row in rows:
-        blocks[row["blok"]].append(row)
+        blocks[row["ulangan_blok"]].append(row)
 
     total_kosong = 0
     total_invalid = 0
@@ -98,8 +98,8 @@ def main():
         print(f"Jumlah penurunan   : {len(penurunan)}")
 
         if values:
-            print(f"Tinggi minimum     : {min(values):.2f} mm")
-            print(f"Tinggi maksimum    : {max(values):.2f} mm")
+            print(f"Tinggi minimum     : {min(values):.2f} cm")
+            print(f"Tinggi maksimum    : {max(values):.2f} cm")
 
         if kosong or invalid:
             status = "BELUM DAPAT DIPASTIKAN"
@@ -113,7 +113,7 @@ def main():
         for prev_no, no, prev, curr in penurunan:
             print(
                 f"  Penurunan kondisi {prev_no} -> {no}: "
-                f"{prev} -> {curr} mm"
+                f"{prev} -> {curr} cm"
             )
 
         for no, raw in desimal_koma:
