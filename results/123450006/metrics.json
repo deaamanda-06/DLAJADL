@@ -9,6 +9,5 @@
   "perangkat": "cpu laptop",
   "model": "cnn",
   "n_val": 45,
-  "n_test": 0,
-  "durasi_detik": 437.1
+  "n_test": 0
 }
