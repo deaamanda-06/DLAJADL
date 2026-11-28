@@ -1,5 +1,8 @@
+
 {
-  "sumber": "https://… (tautan dataset dari kartu Kasus tim di Workbench)",
-  "berkas": ["data/latih.csv"],
-  "catatan": "Isi pada Sprint 0: versi/tanggal unduh, jumlah baris, dan perubahan (bila ada). Berkas data sendiri tidak di-commit."
+  "sumber": "Simulasi sintetis internal untuk smoke test hashtag 6",
+  "berkas": [
+    "data/simulasi_smoke.csv"
+  ],
+  "catatan": "240 citra grayscale 8x8, target tinggi_air_mm, generator seed 20261110. Bukan data eksperimen asli."
 }

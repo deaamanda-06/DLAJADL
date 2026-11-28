@@ -1,80 +1,200 @@
+
+"""Transfer Learning Regression - Smoke Test Sprint 1."""
+
+from __future__ import annotations
+
 import argparse
-import json
-import os
+import subprocess
 import sys
 import time
 from pathlib import Path
 
-# Memastikan folder utama proyek (DLAJADL) terdaftar di sys.path
-AKAR_PROYEK = Path(__file__).resolve().parents[2]
-if str(AKAR_PROYEK) not in sys.path:
-    sys.path.insert(0, str(AKAR_PROYEK))
-
 import numpy as np
 
-# Import modul internal proyek
+AKAR = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(AKAR))
+
 from src.protokol import data
-from src.common import evaluate
 
-NIM = "123450038"
+NIM = Path(__file__).resolve().parent.name
+JALUR = "tl"
 
-def muat_data_simulasi(seed: int):
-    """Mencoba memuat data via src.protokol.data.muat(), 
-    jika belum diisi akan fallback ke data simulasi citra 224x224."""
-    try:
-        return data.muat()
-    except NotImplementedError:
-        print("[INFO] src.protokol.data.muat() belum diisi oleh tim.")
-        print("[INFO] Menggunakan data simulasi citra 224x224...")
-        np.random.seed(seed)
-        # Input citra 224x224 (100 sampel latih, 20 val)
-        X_tr = np.random.randn(100, 3, 224, 224).astype(np.float32)
-        y_tr = np.random.randint(0, 2, size=(100,))
-        X_va = np.random.randn(20, 3, 224, 224).astype(np.float32)
-        y_va = np.random.randint(0, 2, size=(20,))
-        return X_tr, y_tr, X_va, y_va, None, None
+
+def latih_dan_prediksi(seed, final=False):
+    import torch
+    from torch import nn
+    from torch.utils.data import DataLoader, TensorDataset
+
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    torch.set_num_threads(1)
+
+    Xtr, ytr, Xva, _, Xte, _ = data.muat()
+
+    Xtr = np.asarray(Xtr, dtype=np.float32)
+    Xva = np.asarray(Xva, dtype=np.float32)
+
+    if Xtr.ndim == 3:
+        Xtr = Xtr[:, None, :, :]
+        Xva = Xva[:, None, :, :]
+
+    ytr = np.asarray(ytr, dtype=np.float32).reshape(-1)
+
+    y_mean = float(ytr.mean())
+    y_std = float(ytr.std()) + 1e-6
+    y_norm = (ytr - y_mean) / y_std
+
+    # Backbone sementara untuk smoke test.
+    # Belum menggunakan bobot pretrained.
+    class TLRegresi(nn.Module):
+        def __init__(self, channels):
+            super().__init__()
+
+            self.backbone = nn.Sequential(
+                nn.Conv2d(channels, 16, 3, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(16, 32, 3, padding=1),
+                nn.ReLU(),
+                nn.AdaptiveAvgPool2d((1, 1)),
+                nn.Flatten()
+            )
+
+            self.regressor = nn.Sequential(
+                nn.Linear(32, 32),
+                nn.ReLU(),
+                nn.Dropout(0.1),
+                nn.Linear(32, 1)
+            )
+
+        def forward(self, x):
+            return self.regressor(
+                self.backbone(x)
+            ).squeeze(1)
+
+    model = TLRegresi(Xtr.shape[1])
+
+    dataset = TensorDataset(
+        torch.tensor(Xtr),
+        torch.tensor(y_norm)
+    )
+
+    loader = DataLoader(
+        dataset,
+        batch_size=32,
+        shuffle=True,
+        generator=torch.Generator().manual_seed(seed)
+    )
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=0.001,
+        weight_decay=0.0001
+    )
+
+    loss_fn = nn.MSELoss()
+
+    for epoch in range(10):
+        model.train()
+        total_loss = 0
+
+        for xb, yb in loader:
+            optimizer.zero_grad()
+
+            pred = model(xb)
+            loss = loss_fn(pred, yb)
+
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item()
+
+        print(
+            f"Epoch {epoch + 1}/10 "
+            f"- Loss: {total_loss / len(loader):.6f}"
+        )
+
+    model.eval()
+
+    with torch.no_grad():
+        pred_val = (
+            model(torch.tensor(Xva)).numpy()
+            * y_std + y_mean
+        ).astype(np.float32)
+
+        pred_test = None
+
+        if final and Xte is not None:
+            Xte = np.asarray(Xte, dtype=np.float32)
+
+            if Xte.ndim == 3:
+                Xte = Xte[:, None, :, :]
+
+            pred_test = (
+                model(torch.tensor(Xte)).numpy()
+                * y_std + y_mean
+            ).astype(np.float32)
+
+    return pred_val, pred_test
+
 
 def main():
-    parser = argparse.ArgumentParser(description="Kerangka Transfer Learning (TL)")
-    parser.add_argument("--seed", type=int, default=1, help="Seed acak untuk reproduksibilitas")
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--seed", type=int, required=True)
+    parser.add_argument("--final", action="store_true")
+    parser.add_argument("--perangkat", default="cpu laptop")
+
     args = parser.parse_args()
 
-    waktu_mulai = time.time()
-    print(f"=== Menjalankan Kerangka TL (Seed: {args.seed}) ===")
+    if data.TUGAS != "regresi":
+        raise ValueError("Kasus tim harus regresi.")
 
-    # 1. Memuat Data (Citra Wadah 224x224)
-    X_tr, y_tr, X_va, y_va, _, _ = muat_data_simulasi(args.seed)
-    print(f"Bentuk Input Citra Latih : {X_tr.shape} (H=224, W=224)")
-    print(f"Bentuk Input Citra Val   : {X_va.shape}")
+    print("=" * 45)
+    print("TRANSFER LEARNING - REGRESSION")
+    print("NIM:", NIM)
+    print("Seed:", args.seed)
+    print("=" * 45)
 
-    # 2. Inisialisasi Model Pralatih (Transfer Learning Pipeline)
-    print("Inisialisasi arsitektur Transfer Learning (Input 224x224)...")
-    np.random.seed(args.seed)
-    pred_val = np.random.randint(0, 2, size=len(y_va))
+    awal = time.time()
 
-    # 3. Simpan Hasil Prediksi Validasi (pred_val.npy)
-    out_dir = AKAR_PROYEK / "results" / NIM
-    out_dir.mkdir(parents=True, exist_ok=True)
-    pred_val_path = out_dir / "pred_val.npy"
-    np.save(pred_val_path, pred_val)
-    print(f"Prediksi validasi disimpan ke: {pred_val_path}")
+    pred_val, pred_test = latih_dan_prediksi(
+        args.seed, args.final
+    )
 
-    # 4. Evaluasi & Menulis Berkas Hasil (metrics.json) via src.common.evaluate
-    durasi = time.time() - waktu_mulai
-    metrik, ukuran = evaluate.metrik_klasifikasi(y_va, pred_val), {"n_val": len(y_va), "n_test": 0}
-    hasil = {
-        "metrik": {k: round(float(v), 6) for k, v in metrik.items()},
-        "seed": int(args.seed),
-        "perangkat": "cpu laptop",
-        "model": "tl",
-        "durasi_detik": round(durasi, 4),
-        **ukuran
-    }
-    
-    metrics_file = out_dir / "metrics.json"
-    metrics_file.write_text(json.dumps(hasil, indent=2), encoding="utf-8")
-    print(f"Hasil metrik berhasil ditulis ke: {metrics_file}")
-    print("=== Pengujian Kerangka TL Berhasil Sampai Akhir ===")
+    durasi = time.time() - awal
+
+    out = AKAR / "results" / NIM
+    out.mkdir(parents=True, exist_ok=True)
+
+    pred_path = out / "pred_val.npy"
+    np.save(pred_path, pred_val)
+
+    perintah = [
+        sys.executable,
+        "-m", "src.common.evaluate",
+        "--nim", NIM,
+        "--model", JALUR,
+        "--seed", str(args.seed),
+        "--pred-val", str(pred_path),
+        "--durasi", f"{durasi:.2f}",
+        "--perangkat", args.perangkat
+    ]
+
+    if pred_test is not None:
+        test_path = out / "pred_test.npy"
+        np.save(test_path, pred_test)
+        perintah += ["--pred-test", str(test_path)]
+
+    subprocess.run(
+        perintah,
+        check=True,
+        cwd=AKAR
+    )
+
+    print("\nPENGUJIAN TL BERHASIL")
+    print("Prediksi:", pred_path)
+    print("Durasi:", round(durasi, 2), "detik")
+
 
 if __name__ == "__main__":
     main()
