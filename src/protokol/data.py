@@ -2,8 +2,8 @@
 
 Membaca data/cropped/dataset.npz yang dibuat oleh `python -m src.protokol.pemotong`
 dari sesi data/sesi-20261116-095756 (ROI Wadah B -> 224x224).
-Split dilakukan di pemotong pada tingkat kondisi (seed 2026), jadi tidak ada
-kebocoran frame antar subset.
+Data uji = satu blok (siklus pengisian) penuh; validasi dipisah per kondisi
+(seed 2026); tidak ada kebocoran frame antar subset.
 
 Kasus: Taksiran tinggi air di wadah B dari citra (regresi mm).
 """
