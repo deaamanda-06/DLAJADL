@@ -4,12 +4,15 @@
 
 Membaca ``data/sesi-20261116-095756/label.csv`` dan ``kamera_index.csv``,
 mengambil frame saat air diam (antara ``t_selesai_host + 2.0`` hingga
-``min(t_selesai_host + 4.5, t_catat_host - 1.0)``), memotong ROI Wadah B
-``(820, 300, 1140, 720)`` lalu mengubah ukuran menjadi ``224x224`` RGB.
+``min(t_selesai_host + 4.5, t_catat_host - 1.0)``; 1 detik pertama setiap
+kondisi selalu dibuang), memotong ROI Wadah B ``(820, 300, 1140, 720)`` lalu
+mengubah ukuran menjadi ``224x224`` RGB.
 
-Split dilakukan pada tingkat **kondisi** (75 kondisi) menggunakan
-``src.common.split.indeks`` (seed 2026) agar tidak ada kebocoran frame dari
-kondisi yang sama antara latih, validasi, dan uji.
+Split: data uji adalah SATU BLOK (siklus pengisian) penuh, yaitu blok dengan
+nomor tertinggi. Validasi dipisah per kondisi dari blok-blok lainnya
+(seed ``src.common.split.SEED_SPLIT``), sisanya menjadi data latih. Dengan
+begitu tidak ada kondisi, blok uji, maupun frame yang muncul di latih dan uji
+sekaligus.
 """
 from __future__ import annotations
 
@@ -31,6 +34,8 @@ INDEX_PATH = OUT_DIR / "index.csv"
 ROI_BOX = (820, 300, 1140, 720)
 UKURAN = (224, 224)
 MAX_FRAME_PER_KONDISI = 5
+BUANG_DETIK_PERTAMA = 1.0  
+PORSI_VAL = 0.15        
 
 
 def _muat_kamera_index(path: Path) -> list[tuple[str, float]]:
@@ -41,12 +46,16 @@ def _muat_kamera_index(path: Path) -> list[tuple[str, float]]:
 def _pilih_frame(
     frames: list[tuple[str, float]], t_selesai: float, t_catat: float
 ) -> list[str]:
+    # dari 1 detik pertama setiap kondisi.
+    awal_min = t_selesai + BUANG_DETIK_PERTAMA
     akhir = min(t_selesai + 4.5, t_catat - 1.0)
-    kandidat = [b for b, t in frames if t_selesai + 2.0 <= t <= akhir]
+    kandidat = [b for b, t in frames if max(t_selesai + 2.0, awal_min) <= t <= akhir]
     if not kandidat:
-        kandidat = [b for b, t in frames if t_selesai + 1.5 <= t <= t_catat - 0.5]
+        kandidat = [
+            b for b, t in frames if max(t_selesai + 1.5, awal_min) <= t <= t_catat - 0.5
+        ]
     if not kandidat:
-        kandidat = [b for b, t in frames if t_selesai <= t <= t_catat]
+        kandidat = [b for b, t in frames if awal_min <= t <= t_catat]
     if len(kandidat) > MAX_FRAME_PER_KONDISI:
         idx = np.linspace(0, len(kandidat) - 1, MAX_FRAME_PER_KONDISI, dtype=int)
         kandidat = [kandidat[i] for i in idx]
@@ -73,11 +82,17 @@ def potong(simpan_contoh: bool = True) -> Path:
         labels = list(csv.DictReader(f))
     frames = _muat_kamera_index(SESI_DIR / "kamera_index.csv")
 
-    # Split pada tingkat kondisi: 75 -> 60 (train+val) + 15 (test)
-    idx_tv, idx_te = split.indeks(len(labels), porsi_val=0.2, seed=split.SEED_SPLIT)
-    idx_tr_rel, idx_va_rel = split.indeks(len(idx_tv), porsi_val=0.15, seed=split.SEED_SPLIT)
-    idx_tr = set(idx_tv[idx_tr_rel].tolist())
-    idx_va = set(idx_tv[idx_va_rel].tolist())
+    # validasi = sebagian kondisi acak dari blok lain; sisanya latih.
+    blok_arr = np.array([int(r["ulangan_blok"]) for r in labels])
+    blok_uji = int(blok_arr.max())
+    idx_te = np.where(blok_arr == blok_uji)[0]
+    idx_tv = np.where(blok_arr != blok_uji)[0]
+
+    rng = np.random.default_rng(split.SEED_SPLIT)
+    perm = rng.permutation(idx_tv)
+    n_val = max(1, round(PORSI_VAL * len(idx_tv)))
+    idx_va = set(perm[:n_val].tolist())
+    idx_tr = set(perm[n_val:].tolist())
     idx_te_set = set(idx_te.tolist())
 
     bagian: dict[str, tuple[list[np.ndarray], list[float]]] = {

@@ -1,0 +1,15 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.6, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\Asus\AppData\Local\Programs\Python\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Asus\workbench-workspace\capstone-deep-learning
+plugins: anyio-4.15.1
+collecting ... collected 6 items
+
+tests/test_protokol.py::test_semua_subset_terisi PASSED                  [ 16%]
+tests/test_protokol.py::test_tanpa_kebocoran[kondisi_no] PASSED          [ 33%]
+tests/test_protokol.py::test_tanpa_kebocoran[berkas] PASSED              [ 50%]
+tests/test_protokol.py::test_uji_dipisah_per_blok PASSED                 [ 66%]
+tests/test_protokol.py::test_normalisasi_dari_latih_saja PASSED          [ 83%]
+tests/test_protokol.py::test_buang_1_detik_pertama PASSED                [100%]
+
+============================== 6 passed in 6.40s ==============================
