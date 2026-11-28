@@ -1,100 +1,72 @@
+"""Pembanding non-DL: regresi Ridge pada fitur piksel sederhana.
+
+Fitur: citra abu-abu diperkecil 28x28 + profil kecerahan per baris (224).
+Alpha dipilih dengan cross-validation pada data latih saja.
+
+Jalankan dari akar repo:
+    python models/123450043/baseline_nondl.py
 """
-Pembanding non-DL (#8): posisi garis air dari profil kecerahan + regresi linear.
+from __future__ import annotations
 
-1. Citra ROI 224x224 grayscale -> profil kecerahan 1D (rata-rata kolom per baris).
-2. Haluskan (moving average), cari baris dengan gradien ekstrem -> posisi garis air.
-3. Regresi linear posisi(baris) -> tinggi air (mm), dilatih pada data latih.
+import subprocess
+import sys
+import time
+from pathlib import Path
 
-Pilihan konfigurasi (rentang kolom, baris awal pencarian, lebar haluskan, jenis
-gradien) dipilih di BLOK VALIDASI, lalu model dilatih ulang di blok latih+validasi
-dan diuji SEKALI di blok uji. Tanpa GPU/PyTorch.
-
-    python baseline_nondl.py --data-dir sesi-20261116-095756 --out-dir results/123450043
-"""
-import argparse, itertools, json, os, time
 import numpy as np
-from sklearn.linear_model import LinearRegression
-from data_utils import load_samples, split_by_block, to_arrays
+from sklearn.linear_model import RidgeCV
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+AKAR = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(AKAR))
+
+from src.protokol import data  # noqa: E402
+
+POOL = 8  # 224 -> 28
 
 
-def waterline_row(img, cols, lo, w, mode):
-    p = img[:, cols[0]:cols[1]].mean(axis=1)
-    p = np.convolve(p, np.ones(w) / w, mode="same")
-    g = np.gradient(p)[lo:]
-    if mode == "absmax":
-        return lo + int(np.argmax(np.abs(g)))
-    if mode == "min":
-        return lo + int(np.argmin(g))
-    return lo + int(np.argmax(g))          # "max"
+def fitur(X) -> np.ndarray:
+    X = np.asarray(X, dtype=np.float32)
+    if X.max() > 1.5:
+        X = X / 255.0
+    g = X.mean(axis=1)                                         # (N,224,224)
+    n = g.shape[0]
+    kecil = g.reshape(n, 224 // POOL, POOL, 224 // POOL, POOL).mean(axis=(2, 4))
+    baris = g.mean(axis=2)                                     # (N,224)
+    return np.concatenate([kecil.reshape(n, -1), baris], axis=1)
 
 
-def feats(X, cfg):
-    return np.array([[waterline_row(im, *cfg)] for im in X], dtype=np.float64)
+def main() -> None:
+    t0 = time.time()
+    Xtr, ytr, Xva, yva, _, _ = data.muat()      # data uji tidak disentuh
+    ytr, yva = np.asarray(ytr, dtype=np.float64), np.asarray(yva, dtype=np.float64)
 
+    Ftr, Fva = fitur(Xtr), fitur(Xva)
+    model = make_pipeline(
+        StandardScaler(),
+        RidgeCV(alphas=np.logspace(0, 5, 11), cv=5),
+    )
+    model.fit(Ftr, ytr)
+    pred_val = model.predict(Fva)
 
-def mae(a, b):
-    return float(np.mean(np.abs(a - b)))
+    mae = float(np.abs(yva - pred_val).mean())
+    tebak = float(np.abs(yva - ytr.mean()).mean())
+    print(f"frame: train={len(Xtr)} val={len(Xva)} | fitur={Ftr.shape[1]}")
+    print(f"alpha terpilih (CV latih): {model[-1].alpha_:.1f}")
+    print(f"val MAE Ridge: {mae:.4f} mm | tebak rata-rata: {tebak:.4f} mm")
 
+    out = AKAR / "results" / "baseline"
+    out.mkdir(parents=True, exist_ok=True)
+    np.save(out / "pred_val.npy", pred_val)
 
-def per_kondisi_mae(pred, y, kond):
-    out = []
-    for k in np.unique(kond):
-        m = kond == k
-        out.append(abs(pred[m].mean() - y[m][0]))
-    return float(np.mean(out))
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--data-dir", required=True)
-    ap.add_argument("--out-dir", default="results/123450043")
-    ap.add_argument("--test-block", type=int, default=3)
-    ap.add_argument("--val-block", type=int, default=2)
-    args = ap.parse_args()
-    os.makedirs(args.out_dir, exist_ok=True)
-
-    samples = load_samples(args.data_dir)
-    tr, va, te = split_by_block(samples, args.test_block, args.val_block)
-    Xtr, ytr = to_arrays(tr); Xva, yva = to_arrays(va); Xte, yte = to_arrays(te)
-    kte = np.array([s["kondisi"] for s in te])
-
-    grid = list(itertools.product([(0, 224), (60, 160), (100, 224), (120, 200)],
-                                  [60, 100, 140], [3, 5, 9], ["absmax", "min", "max"]))
-    best = None
-    for cfg in grid:
-        m = LinearRegression().fit(feats(Xtr, cfg), ytr)
-        v = mae(m.predict(feats(Xva, cfg)), yva)
-        if best is None or v < best[0]:
-            best = (v, cfg)
-    val_mae, cfg = best
-    print(f"konfigurasi terpilih (di validasi): kolom={cfg[0]} lo={cfg[1]} w={cfg[2]} mode={cfg[3]} | val MAE={val_mae:.3f} mm")
-
-    Xall = np.concatenate([Xtr, Xva]); yall = np.concatenate([ytr, yva])
-    model = LinearRegression().fit(feats(Xall, cfg), yall)
-    pred = model.predict(feats(Xte, cfg))
-    test_mae = mae(pred, yte)
-    cond_mae = per_kondisi_mae(pred, yte, kte)
-    mean_mae = mae(np.full_like(yte, yall.mean()), yte)
-
-    t = time.perf_counter()
-    for im in Xte[:100]:
-        model.predict(feats(im[None], cfg))
-    lat = (time.perf_counter() - t) / min(100, len(Xte)) * 1000.0
-
-    metrics = {
-        "jalur": "pembanding_non_dl", "nim": "123450043", "seed": None,
-        "mae_mm": round(test_mae, 4),
-        "mae_mm_per_kondisi": round(cond_mae, 4),
-        "mae_mm_tebak_rata2": round(mean_mae, 4),
-        "val_mae_mm": round(val_mae, 4),
-        "onnx_kb": None, "latency_ms": round(lat, 3),
-        "config": {"kolom": list(cfg[0]), "baris_awal": cfg[1], "haluskan": cfg[2], "gradien": cfg[3]},
-        "slope_mm_per_baris": round(float(model.coef_[0]), 5),
-        "test_block": args.test_block, "n_test_frames": int(len(yte)),
-    }
-    with open(os.path.join(args.out_dir, "metrics_baseline.json"), "w") as f:
-        json.dump(metrics, f, indent=2)
-    print(json.dumps(metrics, indent=2))
+    subprocess.run(
+        [sys.executable, "-m", "src.common.evaluate",
+         "--nim", "baseline", "--model", "baseline", "--seed", "1",
+         "--pred-val", str(out / "pred_val.npy"),
+         "--durasi", f"{time.time() - t0:.1f}", "--perangkat", "cpu laptop"],
+        check=True, cwd=AKAR,
+    )
 
 
 if __name__ == "__main__":
